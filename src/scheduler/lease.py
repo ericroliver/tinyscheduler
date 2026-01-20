@@ -186,7 +186,7 @@ class LeaseStore:
                 try:
                     os.unlink(temp_path)
                 except OSError:
-                    pass
+                    pass  # Ignore errors during cleanup - file may not exist
                 raise
         except Exception as e:
             raise ConfigurationError(f"Failed to create lease for task {lease.task_id}: {e}")

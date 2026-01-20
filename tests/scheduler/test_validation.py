@@ -256,7 +256,7 @@ class TestAgentControlFileValidation:
         # Set path with non-existent parent
         mock_config.agent_control_file = mock_config.base_path / "deep" / "nested" / "agent-control.json"
         
-        results = validate_agent_control_file(mock_config, fix=True)
+        validate_agent_control_file(mock_config, fix=True)
         
         # Parent directories should be created
         assert mock_config.agent_control_file.parent.exists()

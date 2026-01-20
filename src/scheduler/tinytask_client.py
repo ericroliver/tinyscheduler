@@ -132,7 +132,7 @@ class TinytaskClient:
             TinytaskConnectionError: If connection fails after retries
             TinytaskAPIError: If tool call returns error
         """
-        last_error = None
+        last_error = TinytaskConnectionError("Maximum retries exceeded")
         delay = self.retry_delay
         
         for attempt in range(self.max_retries):
@@ -179,7 +179,7 @@ class TinytaskClient:
             try:
                 await self._session.__aexit__(None, None, None)
             except Exception:
-                pass
+                pass  # Ignore errors during session cleanup
             finally:
                 self._session = None
                 self._read_stream = None

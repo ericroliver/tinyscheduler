@@ -108,7 +108,7 @@ class LockFile:
             if self.lock_path.exists():
                 self.lock_path.unlink()
         except Exception:
-            pass
+            pass  # Best effort cleanup - lock will be stale if file can't be removed
     
     def __enter__(self):
         """Context manager entry."""

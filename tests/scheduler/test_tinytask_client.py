@@ -67,8 +67,6 @@ class TestTinytaskClientQueueMethods:
         
         # Verify the tool was called correctly
         mock_client._run_async.assert_called_once()
-        call_args = mock_client._run_async.call_args[0][0]
-        # Can't directly inspect the coroutine, but we can check it was called
     
     def test_get_queue_tasks_with_assigned_to_filter(self, mock_client):
         """Test get_queue_tasks with assigned_to filter."""

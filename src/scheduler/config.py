@@ -47,7 +47,7 @@ class TinySchedulerConfig:
     enabled: bool = False
     
     # Runtime metadata
-    hostname: str = field(default_factory=lambda: socket.gethostname())
+    hostname: str = field(default_factory=socket.gethostname)
     
     @classmethod
     def from_env(cls, env_file: Optional[str] = None) -> "TinySchedulerConfig":
