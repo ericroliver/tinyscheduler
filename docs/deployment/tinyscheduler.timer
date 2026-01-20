@@ -1,0 +1,39 @@
+# TinyScheduler Systemd Timer (Alternative to Cron)
+# Copy to: /etc/systemd/system/tinyscheduler.timer
+#
+# Use with: /etc/systemd/system/tinyscheduler-oneshot.service
+#
+# This timer runs the scheduler periodically using systemd's timer functionality
+# instead of cron. It's more reliable and easier to monitor than cron.
+#
+# Installation:
+#   sudo cp tinyscheduler.timer /etc/systemd/system/
+#   sudo cp tinyscheduler-oneshot.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable tinyscheduler.timer
+#   sudo systemctl start tinyscheduler.timer
+#
+# Management:
+#   sudo systemctl status tinyscheduler.timer
+#   sudo systemctl list-timers tinyscheduler.timer
+#   sudo journalctl -u tinyscheduler.timer -f
+
+[Unit]
+Description=TinyScheduler timer (runs every minute)
+Documentation=file:///home/user/workspace/calypso/docs/technical/tinyscheduler-operations.md
+
+[Timer]
+# Run 1 minute after system boot
+OnBootSec=1min
+
+# Run every minute after the last execution
+OnUnitActiveSec=1min
+
+# Accuracy (how much drift is acceptable)
+AccuracySec=1s
+
+# Persistent - if system was off when timer should have fired, run it on next boot
+Persistent=true
+
+[Install]
+WantedBy=timers.target

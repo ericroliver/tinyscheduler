@@ -1,0 +1,51 @@
+# TinyScheduler One-Shot Service (for use with systemd timer)
+# Copy to: /etc/systemd/system/tinyscheduler-oneshot.service
+#
+# This service is triggered by tinyscheduler.timer
+# It runs a single reconciliation pass and exits.
+#
+# Installation:
+#   sudo cp tinyscheduler-oneshot.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#
+# Note: Don't enable this service directly - enable the timer instead
+
+[Unit]
+Description=TinyScheduler one-shot reconciliation pass
+Documentation=file:///home/user/workspace/calypso/docs/technical/tinyscheduler-operations.md
+After=network.target
+
+[Service]
+Type=oneshot
+
+# User and group (adjust as needed)
+User=root
+Group=root
+
+# Working directory
+WorkingDirectory=/home/user/workspace/calypso
+
+# Load environment from .env file
+EnvironmentFile=/home/user/workspace/calypso/.env
+
+# Command to run (one-shot mode)
+ExecStart=/usr/bin/python3 -m src.scheduler.cli run --once
+
+# Timeout (should be less than timer interval to avoid overlap)
+TimeoutSec=50s
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=tinyscheduler
+
+# Security settings (uncomment for hardening)
+# NoNewPrivileges=true
+# PrivateTmp=true
+# ProtectSystem=strict
+# ProtectHome=read-only
+# ReadWritePaths=/home/user/workspace/calypso/state
+
+[Install]
+# Don't enable directly - controlled by timer
+WantedBy=multi-user.target

@@ -1,0 +1,47 @@
+[
+    {
+        "agentName": "vaela",
+        "agentType": "dev",
+        "comment": "Senior development agent - fullstack"
+    },
+    {
+        "agentName": "damien",
+        "agentType": "dev",
+        "comment": "Development agent - backend specialist"
+    },
+    {
+        "agentName": "remy",
+        "agentType": "dev",
+        "comment": "Development agent - frontend specialist"
+    },
+    {
+        "agentName": "kira",
+        "agentType": "dev",
+        "comment": "Development agent - infrastructure"
+    },
+    {
+        "agentName": "oscar",
+        "agentType": "qa",
+        "comment": "QA lead - test automation"
+    },
+    {
+        "agentName": "kalis",
+        "agentType": "qa",
+        "comment": "QA agent - manual testing"
+    },
+    {
+        "agentName": "karma",
+        "agentType": "qa",
+        "comment": "QA agent - performance testing"
+    },
+    {
+        "agentName": "sage",
+        "agentType": "product",
+        "comment": "Product management agent"
+    },
+    {
+        "agentName": "atlas",
+        "agentType": "docs",
+        "comment": "Documentation agent"
+    }
+]

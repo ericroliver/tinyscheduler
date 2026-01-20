@@ -1,0 +1,67 @@
+# TinyScheduler Systemd Service (Daemon Mode)
+# Copy to: /etc/systemd/system/tinyscheduler.service
+#
+# Installation:
+#   sudo cp tinyscheduler.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable tinyscheduler
+#   sudo systemctl start tinyscheduler
+#
+# Management:
+#   sudo systemctl status tinyscheduler
+#   sudo systemctl stop tinyscheduler
+#   sudo systemctl restart tinyscheduler
+#   sudo journalctl -u tinyscheduler -f
+
+[Unit]
+Description=TinyScheduler - Lightweight task scheduler for Goose agents
+Documentation=file:///home/user/workspace/calypso/docs/technical/tinyscheduler-operations.md
+After=network.target
+# If you have a tinytask service, add it here
+# After=network.target tinytask.service
+# Wants=tinytask.service
+
+[Service]
+Type=simple
+
+# User and group (adjust as needed)
+User=root
+Group=root
+# Or use dedicated user:
+# User=calypso
+# Group=calypso
+
+# Working directory
+WorkingDirectory=/home/user/workspace/calypso
+
+# Load environment from .env file
+EnvironmentFile=/home/user/workspace/calypso/.env
+
+# Command to run
+ExecStart=/usr/bin/python3 -m src.scheduler.cli run --daemon
+
+# Restart policy
+Restart=on-failure
+RestartSec=10s
+StartLimitBurst=3
+StartLimitIntervalSec=60s
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=tinyscheduler
+
+# Security settings (uncomment for hardening)
+# NoNewPrivileges=true
+# PrivateTmp=true
+# ProtectSystem=strict
+# ProtectHome=read-only
+# ReadWritePaths=/home/user/workspace/calypso/state
+
+# Resource limits (adjust as needed)
+# LimitNOFILE=65535
+# MemoryLimit=2G
+# CPUQuota=200%
+
+[Install]
+WantedBy=multi-user.target

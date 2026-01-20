@@ -1,0 +1,17 @@
+[
+    {
+        "agentName": "vaela",
+        "agentType": "dev",
+        "comment": "Primary development agent"
+    },
+    {
+        "agentName": "remy",
+        "agentType": "dev",
+        "comment": "Secondary development agent"
+    },
+    {
+        "agentName": "oscar",
+        "agentType": "qa",
+        "comment": "QA and testing agent"
+    }
+]
