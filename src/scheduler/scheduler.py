@@ -16,11 +16,13 @@ try:
     from .lease import Lease, LeaseStore
     from .tinytask_client import TinytaskClient, TinytaskClientError
     from .agent_registry import AgentRegistry
+    from .validators import validate_task_id, validate_agent_name, validate_hostname, validate_recipe_path
 except ImportError:
     from src.scheduler.config import TinySchedulerConfig
     from src.scheduler.lease import Lease, LeaseStore
     from src.scheduler.tinytask_client import TinytaskClient, TinytaskClientError
     from src.scheduler.agent_registry import AgentRegistry
+    from src.scheduler.validators import validate_task_id, validate_agent_name, validate_hostname, validate_recipe_path
 
 
 # Global flag for graceful shutdown
@@ -521,6 +523,15 @@ class Scheduler:
         Returns:
             True if spawned successfully
         """
+        # SECURITY: Validate all inputs before using in commands/paths (CWE-78, CWE-22)
+        try:
+            task_id = validate_task_id(task_id)
+            agent = validate_agent_name(agent)
+            # Recipe validation happens separately in calling code
+        except ValueError as e:
+            self.logger.error(f"Invalid input for task spawn: {e}")
+            return False
+        
         wrapper_script = self.config.bin_dir / "run_agent.py"
         
         if not wrapper_script.exists():

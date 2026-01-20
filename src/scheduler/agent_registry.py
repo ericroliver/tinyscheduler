@@ -6,6 +6,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional
 
+try:
+    from .validators import validate_json_file_size, validate_agent_name
+except ImportError:
+    from src.scheduler.validators import validate_json_file_size, validate_agent_name
+
 logger = logging.getLogger(__name__)
 
 

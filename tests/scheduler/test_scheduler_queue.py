@@ -235,20 +235,25 @@ class TestProcessUnassignedTasks:
         stats = {'unassigned_matched': 0, 'tasks_spawned': 0, 'errors': 0}
         
         scheduler.lease_store.count_active_by_agent = Mock(return_value={
-            "vaela": 1  # vaela has 1 of 2 slots used
+            "vaela": 1,  # vaela has 1 of 2 slots used
+            "oscar": 1   # oscar at capacity
         })
         
         # Mock 5 unassigned dev tasks (but only 3 slots available: 1 for vaela, 2 for remy)
+        # No qa tasks because oscar is at capacity
         dev_tasks = [Task(task_id=str(i), agent="", status="idle") for i in range(1, 6)]
         
-        scheduler.tinytask_client.get_unassigned_in_queue = Mock(return_value=dev_tasks)
+        scheduler.tinytask_client.get_unassigned_in_queue = Mock(side_effect=lambda q, l: {
+            "dev": dev_tasks,
+            "qa": []  # No qa tasks
+        }.get(q, []))
         scheduler.tinytask_client.assign_task = Mock(return_value=True)
         scheduler._spawn_wrapper = Mock(return_value=True)
         
         # Execute
         scheduler._process_unassigned_tasks(stats)
         
-        # Should only process 3 tasks (total available slots)
+        # Should only process 3 tasks from dev queue (total available slots)
         assert stats['unassigned_matched'] == 3
         assert stats['tasks_spawned'] == 3
     
@@ -293,15 +298,20 @@ class TestProcessUnassignedTasks:
         
         scheduler.lease_store.count_active_by_agent = Mock(return_value={})
         
-        dev_tasks = [Task(task_id="1", agent="", status="idle")]
-        scheduler.tinytask_client.get_unassigned_in_queue = Mock(return_value=dev_tasks)
+        # Return tasks only for dev queue, not qa
+        def mock_get_unassigned(queue, limit):
+            if queue == "dev":
+                return [Task(task_id="1", agent="", status="idle")]
+            return []
+        
+        scheduler.tinytask_client.get_unassigned_in_queue = Mock(side_effect=mock_get_unassigned)
         scheduler.tinytask_client.assign_task = Mock(return_value=True)
         scheduler._spawn_wrapper = Mock(return_value=True)
         
         # Execute
         scheduler._process_unassigned_tasks(stats)
         
-        # Should track intent but not actually assign or spawn
+        # Should track intent but not actually assign or spawn (1 from dev, 0 from qa)
         assert stats['unassigned_matched'] == 1
         assert scheduler.tinytask_client.assign_task.call_count == 0
         assert scheduler._spawn_wrapper.call_count == 0
@@ -312,15 +322,20 @@ class TestProcessUnassignedTasks:
         
         scheduler.lease_store.count_active_by_agent = Mock(return_value={})
         
-        dev_tasks = [Task(task_id="1", agent="", status="idle")]
-        scheduler.tinytask_client.get_unassigned_in_queue = Mock(return_value=dev_tasks)
+        # Return tasks only for dev queue, not qa
+        def mock_get_unassigned(queue, limit):
+            if queue == "dev":
+                return [Task(task_id="1", agent="", status="idle")]
+            return []
+        
+        scheduler.tinytask_client.get_unassigned_in_queue = Mock(side_effect=mock_get_unassigned)
         scheduler.tinytask_client.assign_task = Mock(return_value=False)  # Assignment fails
         scheduler._spawn_wrapper = Mock(return_value=True)
         
         # Execute
         scheduler._process_unassigned_tasks(stats)
         
-        # Should track error and not spawn
+        # Should track error and not spawn (1 error from dev, 0 from qa)
         assert stats['unassigned_matched'] == 0
         assert stats['tasks_spawned'] == 0
         assert stats['errors'] == 1
@@ -332,15 +347,20 @@ class TestProcessUnassignedTasks:
         
         scheduler.lease_store.count_active_by_agent = Mock(return_value={})
         
-        dev_tasks = [Task(task_id="1", agent="", status="idle")]
-        scheduler.tinytask_client.get_unassigned_in_queue = Mock(return_value=dev_tasks)
+        # Return tasks only for dev queue, not qa
+        def mock_get_unassigned(queue, limit):
+            if queue == "dev":
+                return [Task(task_id="1", agent="", status="idle")]
+            return []
+        
+        scheduler.tinytask_client.get_unassigned_in_queue = Mock(side_effect=mock_get_unassigned)
         scheduler.tinytask_client.assign_task = Mock(return_value=True)
         scheduler._spawn_wrapper = Mock(return_value=False)  # Spawn fails
         
         # Execute
         scheduler._process_unassigned_tasks(stats)
         
-        # Should track error
+        # Should track error (1 from dev, 0 from qa)
         assert stats['unassigned_matched'] == 0
         assert stats['tasks_spawned'] == 0
         assert stats['errors'] == 1
@@ -422,24 +442,30 @@ class TestProcessAssignedTasks:
         """Test that processing respects agent capacity limits."""
         stats = {'assigned_spawned': 0, 'tasks_spawned': 0, 'errors': 0}
         
-        # vaela has 1 slot available (1 of 2 used)
+        # vaela has 1 slot available (1 of 2 used), others at capacity
         scheduler.lease_store.count_active_by_agent = Mock(return_value={
-            "vaela": 1
+            "vaela": 1,
+            "remy": 2,
+            "oscar": 1
         })
         
-        # Mock 3 idle tasks for vaela (but only 1 slot available)
-        scheduler.tinytask_client.list_idle_tasks = Mock(return_value=[
-            Task(task_id="1", agent="vaela", status="idle"),
-            Task(task_id="2", agent="vaela", status="idle"),
-            Task(task_id="3", agent="vaela", status="idle"),
-        ])
+        # Mock 3 idle tasks for vaela (but only 1 slot available), none for others at capacity
+        def mock_list_idle(agent, limit):
+            if agent == "vaela":
+                return [
+                    Task(task_id="1", agent="vaela", status="idle"),
+                    Task(task_id="2", agent="vaela", status="idle"),
+                    Task(task_id="3", agent="vaela", status="idle"),
+                ]
+            return []  # Other agents at capacity
         
+        scheduler.tinytask_client.list_idle_tasks = Mock(side_effect=mock_list_idle)
         scheduler._spawn_wrapper = Mock(return_value=True)
         
         # Execute
         scheduler._process_assigned_tasks(stats)
         
-        # Should only spawn 1 task (available capacity)
+        # Should only spawn 1 task for vaela (available capacity), none for others
         assert scheduler._spawn_wrapper.call_count == 1
     
     def test_process_assigned_tasks_dry_run(self, scheduler):
@@ -449,16 +475,19 @@ class TestProcessAssignedTasks:
         
         scheduler.lease_store.count_active_by_agent = Mock(return_value={})
         
-        scheduler.tinytask_client.list_idle_tasks = Mock(return_value=[
-            Task(task_id="1", agent="vaela", status="idle")
-        ])
+        # Return tasks only for vaela, not for other agents
+        def mock_list_idle(agent, limit):
+            if agent == "vaela":
+                return [Task(task_id="1", agent="vaela", status="idle")]
+            return []
         
+        scheduler.tinytask_client.list_idle_tasks = Mock(side_effect=mock_list_idle)
         scheduler._spawn_wrapper = Mock(return_value=True)
         
         # Execute
         scheduler._process_assigned_tasks(stats)
         
-        # Should track intent but not spawn
+        # Should track intent but not spawn (1 from vaela, 0 from others)
         assert stats['assigned_spawned'] == 1
         assert scheduler._spawn_wrapper.call_count == 0
     
@@ -468,16 +497,19 @@ class TestProcessAssignedTasks:
         
         scheduler.lease_store.count_active_by_agent = Mock(return_value={})
         
-        scheduler.tinytask_client.list_idle_tasks = Mock(return_value=[
-            Task(task_id="1", agent="vaela", status="idle")
-        ])
+        # Return tasks only for vaela, not for other agents
+        def mock_list_idle(agent, limit):
+            if agent == "vaela":
+                return [Task(task_id="1", agent="vaela", status="idle")]
+            return []
         
+        scheduler.tinytask_client.list_idle_tasks = Mock(side_effect=mock_list_idle)
         scheduler._spawn_wrapper = Mock(return_value=False)
         
         # Execute
         scheduler._process_assigned_tasks(stats)
         
-        # Should track error
+        # Should track error (1 from vaela, 0 from others)
         assert stats['assigned_spawned'] == 0
         assert stats['tasks_spawned'] == 0
         assert stats['errors'] == 1

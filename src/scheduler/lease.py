@@ -11,8 +11,10 @@ from typing import Dict, List, Optional
 
 try:
     from ..exceptions import ConfigurationError
+    from .validators import validate_lease_path, validate_json_file_size
 except ImportError:
     from src.exceptions import ConfigurationError
+    from src.scheduler.validators import validate_lease_path, validate_json_file_size
 
 
 @dataclass

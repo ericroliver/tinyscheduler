@@ -8,7 +8,7 @@
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](http://makeapullrequest.com)
 
-[Features](#-features) • [Quick Start](#-quick-start) • [Architecture](#-architecture) • [Documentation](#-documentation) • [Contributing](#-contributing)
+[Features](#-features) • [Quick Start](#-quick-start) • [Architecture](#-architecture) • [Security](#-security) • [Documentation](#-documentation) • [Contributing](#-contributing)
 
 </div>
 
@@ -214,6 +214,49 @@ state/
   "max_runtime_sec": 3600
 }
 ```
+
+## 🔒 Security
+
+TinyScheduler implements comprehensive security controls to prevent common vulnerabilities. **All critical security issues identified in pre-release audit have been resolved.**
+
+### Security Features
+
+- ✅ **Input Validation** - All user inputs validated against command injection and path traversal
+- ✅ **Path Sanitization** - Recipe and lease paths confined to designated directories
+- ✅ **File Permissions** - Lease files created with restrictive permissions (0600)
+- ✅ **Size Limits** - JSON file size limits prevent DoS attacks
+- ✅ **Atomic Operations** - Crash-safe file operations using temp + rename pattern
+- ✅ **PID Validation** - Process liveness checks prevent lease hijacking
+
+### Security Testing
+
+```bash
+# Run security test suite
+python -m pytest tests/scheduler/test_security_validators.py -v
+
+# Static security analysis
+pip install bandit
+bandit -r src/scheduler/ -ll
+```
+
+### Security Documentation
+
+- **[Security Guide](docs/SECURITY.md)** - Comprehensive security documentation
+- **[Security Audit Report](docs/audit-reports/SECURITY_AUDIT_REPORT-20260119.md)** - Pre-release security audit
+- **Vulnerability Reporting** - See [SECURITY.md](docs/SECURITY.md) for incident response process
+
+### Production Security Checklist
+
+Before deploying to production:
+
+- [ ] Use HTTPS for MCP endpoint (not HTTP)
+- [ ] Set restrictive permissions on state directories (`chmod 700 state/`)
+- [ ] Validate `agent-control.json` using `./tinyscheduler validate-config`
+- [ ] Review environment variables for sensitive data
+- [ ] Run security test suite
+- [ ] Enable structured logging with field sanitization
+
+See the [Security Guide](docs/SECURITY.md) for complete deployment security recommendations.
 
 ## 📚 Documentation
 
