@@ -1,0 +1,62 @@
+[
+    {
+        "agentName": "vaela",
+        "agentType": "dev",
+        "comment": "Development queue - backend services"
+    },
+    {
+        "agentName": "damien",
+        "agentType": "dev",
+        "comment": "Development queue - backend services"
+    },
+    {
+        "agentName": "remy",
+        "agentType": "frontend",
+        "comment": "Frontend queue - UI/UX work"
+    },
+    {
+        "agentName": "kira",
+        "agentType": "frontend",
+        "comment": "Frontend queue - UI/UX work"
+    },
+    {
+        "agentName": "oscar",
+        "agentType": "qa",
+        "comment": "QA queue - functional testing"
+    },
+    {
+        "agentName": "kalis",
+        "agentType": "qa",
+        "comment": "QA queue - functional testing"
+    },
+    {
+        "agentName": "karma",
+        "agentType": "qa",
+        "comment": "QA queue - functional testing"
+    },
+    {
+        "agentName": "blade",
+        "agentType": "infra",
+        "comment": "Infrastructure queue - DevOps/SRE tasks"
+    },
+    {
+        "agentName": "forge",
+        "agentType": "infra",
+        "comment": "Infrastructure queue - DevOps/SRE tasks"
+    },
+    {
+        "agentName": "sage",
+        "agentType": "product",
+        "comment": "Product queue - requirements and planning"
+    },
+    {
+        "agentName": "atlas",
+        "agentType": "docs",
+        "comment": "Documentation queue - technical writing"
+    },
+    {
+        "agentName": "scribe",
+        "agentType": "docs",
+        "comment": "Documentation queue - technical writing"
+    }
+]

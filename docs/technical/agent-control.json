@@ -1,0 +1,25 @@
+[
+    {
+        "agentName": "vaela",
+        "agentType": "dev"
+    },
+    {
+        "agentName": "damien",
+        "agentType": "dev"
+    },
+    {
+        "agentName": "oscar",
+        "agentType": "qa"
+    },
+    {
+        "agentName": "kalis",
+        "agentType": "qa"
+    },    {
+        "agentName": "karma",
+        "agentType": "qa"
+    },
+    {
+        "agentName": "pirstin",
+        "agentType": "qa"
+    }
+]

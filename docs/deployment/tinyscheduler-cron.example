@@ -1,0 +1,38 @@
+# TinyScheduler Cron Examples
+# Add these to your crontab with: crontab -e
+
+# IMPORTANT: Use --env-file to specify custom config file (must come before subcommand)
+
+# Run scheduler every minute with custom env file (high frequency, low latency)
+* * * * * cd /home/user/workspace/calypso && ./tinyscheduler --env-file tinyscheduler.env run --once >> /home/user/workspace/calypso/state/logs/cron.log 2>&1
+
+# Run scheduler every 2 minutes with custom env file
+*/2 * * * * cd /home/user/workspace/calypso && ./tinyscheduler --env-file tinyscheduler.env run --once
+
+# Run scheduler every 5 minutes (moderate frequency)
+*/5 * * * * cd /home/user/workspace/calypso && ./tinyscheduler --env-file tinyscheduler.env run --once
+
+# Run scheduler every 15 minutes (low frequency, higher latency)
+*/15 * * * * cd /home/user/workspace/calypso && ./tinyscheduler --env-file tinyscheduler.env run --once
+
+# Run only during business hours (9 AM - 6 PM, Mon-Fri)
+* 9-18 * * 1-5 cd /home/user/workspace/calypso && ./tinyscheduler --env-file tinyscheduler.env run --once
+
+# Using default .env discovery (looks for .env in current directory)
+* * * * * cd /home/user/workspace/calypso && ./tinyscheduler run --once
+
+# With custom agent limits (overrides config file)
+*/2 * * * * cd /home/user/workspace/calypso && ./tinyscheduler --env-file tinyscheduler.env run --once --agent-limit dispatcher=2 --agent-limit architect=3
+
+# Dry run for testing (won't actually spawn tasks)
+*/5 * * * * cd /home/user/workspace/calypso && ./tinyscheduler --env-file tinyscheduler.env run --once --dry-run >> /home/user/workspace/calypso/state/logs/dryrun.log 2>&1
+
+# Using absolute path to env file
+* * * * * cd /home/user/workspace/calypso && ./tinyscheduler --env-file /path/to/production.env run --once
+
+# Notes:
+# 1. --env-file must come BEFORE the subcommand (validate-config, config, run)
+# 2. If --env-file is omitted, TinyScheduler auto-discovers .env in current directory
+# 3. Lock file prevents overlapping runs, so frequent cron is safe
+# 4. Logs rotate daily automatically when using file logging
+# 5. Monitor cron execution: grep CRON /var/log/syslog
