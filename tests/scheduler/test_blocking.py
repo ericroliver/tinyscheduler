@@ -1,7 +1,6 @@
 """Unit tests for task blocking functionality."""
 
 import pytest
-from datetime import datetime
 from unittest.mock import Mock, patch
 from src.scheduler.tinytask_client import Task
 from src.scheduler.scheduler import Scheduler
