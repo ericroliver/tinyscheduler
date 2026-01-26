@@ -45,6 +45,7 @@ class TinySchedulerConfig:
     dry_run: bool = False
     log_level: str = "INFO"
     enabled: bool = False
+    disable_blocking: bool = False
     
     # Runtime metadata
     hostname: str = field(default_factory=socket.gethostname)
@@ -152,6 +153,7 @@ class TinySchedulerConfig:
         log_level = os.getenv("TINYSCHEDULER_LOG_LEVEL", "INFO")
         dry_run = os.getenv("TINYSCHEDULER_DRY_RUN", "false").lower() in ("true", "1", "yes")
         enabled = os.getenv("TINYSCHEDULER_ENABLED", "false").lower() in ("true", "1", "yes")
+        disable_blocking = os.getenv("TINYSCHEDULER_DISABLE_BLOCKING", "false").lower() in ("true", "1", "yes")
         
         return cls(
             base_path=base_path,
@@ -171,6 +173,7 @@ class TinySchedulerConfig:
             log_level=log_level,
             dry_run=dry_run,
             enabled=enabled,
+            disable_blocking=disable_blocking,
         )
     
     @classmethod
@@ -236,6 +239,9 @@ class TinySchedulerConfig:
         
         if hasattr(args, 'enabled') and args.enabled is not None:
             config.enabled = args.enabled
+        
+        if hasattr(args, 'disable_blocking') and args.disable_blocking:
+            config.disable_blocking = True
         
         return config
     
@@ -394,6 +400,7 @@ class TinySchedulerConfig:
             "dry_run": self.dry_run,
             "log_level": self.log_level,
             "enabled": self.enabled,
+            "disable_blocking": self.disable_blocking,
             "hostname": self.hostname,
         }
     
@@ -416,5 +423,6 @@ class TinySchedulerConfig:
             f"  Log Level: {self.log_level}\n"
             f"  Dry Run: {self.dry_run}\n"
             f"  Enabled: {self.enabled}\n"
+            f"  Disable Blocking: {self.disable_blocking}\n"
             f"  Hostname: {self.hostname}"
         )

@@ -31,6 +31,7 @@ TinyScheduler provides operational control over Goose-based agent execution by i
 - **File-backed leases** - Authoritative tracking of in-flight tasks via JSON files
 - **Reconciliation loop** - Periodically scans tinytask queues and spawns Goose agents
 - **Heartbeat monitoring** - Detects and recovers from stale/orphaned tasks
+- **Task blocking awareness** - Respects TinyTask blocking relationships for efficient execution
 - **Concurrency control** - Enforces per-agent slot limits
 - **Lock file protection** - Prevents overlapping scheduler runs
 
@@ -53,6 +54,38 @@ TinyScheduler now features **queue-based task assignment**, allowing intelligent
 5. **Already-Assigned Tasks** - Existing assigned tasks continue to work as before
 
 **See**: [Migration Guide](./technical/tinyscheduler-migration-guide.md) for upgrading from legacy mode.
+
+### Task Blocking Support
+
+TinyScheduler respects task blocking relationships from TinyTask, ensuring blocked tasks are not spawned prematurely and blocker tasks are prioritized:
+
+- **Blocked Task Filtering** - Tasks with `is_currently_blocked=true` are automatically skipped
+- **Blocker Task Prioritization** - Tasks that block other tasks are spawned first
+- **Intelligent Sorting** - Multi-level task sorting: blocker count > priority > creation time
+- **Backward Compatible** - Works automatically when TinyTask has blocking enabled, gracefully handles older TinyTask instances
+- **Configurable** - Can be disabled via `TINYSCHEDULER_DISABLE_BLOCKING=1` for rollback scenarios
+
+**How It Works**:
+1. TinyScheduler queries tasks from TinyTask (which includes blocking metadata)
+2. Tasks marked as `is_currently_blocked` are filtered out
+3. Remaining tasks are analyzed for blocking relationships
+4. Tasks that block others are prioritized for spawning
+5. Within each group, tasks are sorted by priority and creation time
+
+**Example**:
+```
+Tasks:
+- Task 1: priority=0, blocks Tasks 2 & 3
+- Task 2: priority=10, blocked by Task 1
+- Task 3: priority=5, unblocked
+
+Spawn Order:
+1. Task 1 (blocker, despite low priority)
+2. Task 3 (unblocked, ready to run)
+3. Task 2 (skipped - currently blocked)
+```
+
+This ensures maximum throughput by completing blocker tasks first, unblocking downstream dependencies faster.
 
 ## Architecture
 
@@ -150,6 +183,9 @@ TINYSCHEDULER_MCP_ENDPOINT=http://localhost:3000
 TINYSCHEDULER_LOOP_INTERVAL_SEC=60
 TINYSCHEDULER_HEARTBEAT_SEC=15
 TINYSCHEDULER_MAX_RUNTIME_SEC=3600
+
+# Disable task blocking behavior (for rollback)
+TINYSCHEDULER_DISABLE_BLOCKING=false
 ```
 
 ### Agent Control File
@@ -384,6 +420,7 @@ Key events logged per reconciliation pass:
 - Leases scanned
 - Leases reclaimed (with reason)
 - Tasks spawned
+- Blocked tasks skipped
 - Errors encountered
 
 Future: JSONL metrics stream for Prometheus scraping.
@@ -462,6 +499,18 @@ python3 -m json.tool $TINYSCHEDULER_AGENT_CONTROL_FILE
 - Check agent limits configuration - agents may have different capacity
 - Review logs for assignment decisions
 - Verify no agents repeatedly failing (which would reduce their capacity)
+
+**Blocked Tasks Not Spawning**:
+```bash
+# Check if tasks are being filtered
+./tinyscheduler run --once | grep "Filtered out"
+
+# View blocked task count in summary
+./tinyscheduler run --once | grep "Blocked tasks skipped"
+
+# Disable blocking temporarily to test
+TINYSCHEDULER_DISABLE_BLOCKING=1 ./tinyscheduler run --once --dry-run
+```
 
 See [`docs/technical/tinyscheduler-operations.md`](./technical/tinyscheduler-operations.md) for comprehensive troubleshooting.
 

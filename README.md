@@ -38,6 +38,7 @@ TinyScheduler is a **lightweight, file-backed task scheduler** that coordinates 
 - **💓 Heartbeat Monitoring** - Automatic detection and recovery of stale/failed tasks
 - **⚖️ Queue-Based Assignment** - Automatic task distribution across agent pools by type (dev, qa, product, etc.)
 - **🎯 Agent Pooling** - Multiple agents can service the same queue with intelligent load balancing
+- **🔗 Task Blocking Awareness** - Respects TinyTask blocking relationships, filtering blocked tasks and prioritizing blocker tasks
 - **🔐 Lock File Protection** - Prevents overlapping scheduler runs
 - **⏱️ Configurable Timeouts** - Max runtime, heartbeat intervals, loop timing
 - **🔍 Observability** - Structured logging, lease inspection, dry-run mode

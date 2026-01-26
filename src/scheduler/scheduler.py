@@ -14,13 +14,13 @@ from typing import Dict, List, Optional, Tuple
 try:
     from .config import TinySchedulerConfig
     from .lease import Lease, LeaseStore
-    from .tinytask_client import TinytaskClient, TinytaskClientError
+    from .tinytask_client import Task, TinytaskClient, TinytaskClientError
     from .agent_registry import AgentRegistry
     from .validators import validate_task_id, validate_agent_name, validate_hostname, validate_recipe_path
 except ImportError:
     from src.scheduler.config import TinySchedulerConfig
     from src.scheduler.lease import Lease, LeaseStore
-    from src.scheduler.tinytask_client import TinytaskClient, TinytaskClientError
+    from src.scheduler.tinytask_client import Task, TinytaskClient, TinytaskClientError
     from src.scheduler.agent_registry import AgentRegistry
     from src.scheduler.validators import validate_task_id, validate_agent_name, validate_hostname, validate_recipe_path
 
@@ -233,6 +233,157 @@ class Scheduler:
         best_agent = max(available_agents.items(), key=lambda x: (x[1], x[0]))
         return best_agent[0]
     
+    def _filter_blocked_tasks(self, tasks: List[Task]) -> Tuple[List[Task], int]:
+        """
+        Filter out blocked tasks.
+        
+        Tasks are considered blocked if is_currently_blocked=True.
+        This is computed by TinyTask based on the blocking task's status.
+        
+        Args:
+            tasks: List of tasks to filter
+            
+        Returns:
+            Tuple of (unblocked_tasks, blocked_count)
+            
+        Example:
+            # Using dicts for illustration; in real usage these are Task instances.
+            tasks = [
+                {"task_id": "1", "is_currently_blocked": False},
+                {"task_id": "2", "is_currently_blocked": True},
+                {"task_id": "3", "is_currently_blocked": False},
+            ]
+            unblocked, count = self._filter_blocked_tasks(tasks)
+            # unblocked will contain tasks with IDs "1" and "3"
+            # count will be 1
+        """
+        # Check if blocking is disabled
+        if self.config.disable_blocking:
+            self.logger.debug("Task blocking is disabled, not filtering blocked tasks")
+            return tasks, 0
+        
+        unblocked = []
+        blocked_count = 0
+        
+        for task in tasks:
+            if task.is_currently_blocked:
+                self.logger.debug(
+                    f"Task {task.task_id} is blocked by task {task.blocked_by_task_id}, skipping"
+                )
+                blocked_count += 1
+            else:
+                unblocked.append(task)
+        
+        if blocked_count > 0:
+            self.logger.info(f"Filtered out {blocked_count} blocked task(s)")
+        
+        return unblocked, blocked_count
+    
+    def _count_blocking_relationships(self, tasks: List[Task]) -> Dict[str, int]:
+        """
+        Count how many tasks each task is blocking.
+        
+        This helps prioritize tasks that will unblock the most other tasks
+        when completed. Only counts relationships within the provided task list.
+        
+        Args:
+            tasks: List of all tasks (blocked and unblocked)
+            
+        Returns:
+            Dict mapping task_id -> count of tasks it blocks
+            
+        Example:
+            # Using dicts for illustration; in real usage these are Task instances.
+            tasks = [
+                {"task_id": "1", "blocked_by_task_id": None},
+                {"task_id": "2", "blocked_by_task_id": "1"},
+                {"task_id": "3", "blocked_by_task_id": "1"},
+                {"task_id": "4", "blocked_by_task_id": "2"},
+            ]
+            counts = self._count_blocking_relationships(tasks)
+            # counts will be {"1": 2, "2": 1}
+        """
+        blocker_counts = {}
+        
+        # Build set of task IDs we have
+        task_ids = {task.task_id for task in tasks}
+        
+        # Count blocking relationships
+        for task in tasks:
+            if task.blocked_by_task_id:
+                blocker_id = str(task.blocked_by_task_id)
+                if blocker_id in task_ids:
+                    blocker_counts[blocker_id] = blocker_counts.get(blocker_id, 0) + 1
+        
+        return blocker_counts
+    
+    def _sort_tasks_for_spawning(
+        self,
+        tasks: List[Task],
+        blocker_counts: Dict[str, int]
+    ) -> List[Task]:
+        """
+        Sort tasks for optimal spawning order.
+        
+        Priority order (descending importance):
+        1. Tasks blocking other tasks (most blockers first)
+        2. Task priority (higher priority first)
+        3. Creation time (older tasks first - FIFO)
+        
+        This ensures blocker tasks complete first, unblocking dependencies,
+        while maintaining priority and fairness within each group.
+        
+        Args:
+            tasks: List of tasks to sort
+            blocker_counts: Dict of task_id -> count of tasks it blocks
+            
+        Returns:
+            Sorted list of tasks
+            
+        Example:
+            # Using dicts for illustration; in real usage these are Task instances.
+            tasks = [
+                {"task_id": "1", "priority": 5, "created_at": "2026-01-25T10:00:00"},
+                {"task_id": "2", "priority": 10, "created_at": "2026-01-25T11:00:00"},
+                {"task_id": "3", "priority": 5, "created_at": "2026-01-25T09:00:00"},
+            ]
+            blocker_counts = {"1": 2}  # Task "1" blocks 2 others
+            # After sorting (conceptually), the order would be:
+            #   task "1" (blocker), task "2" (higher priority), task "3" (older)
+        """
+        def sort_key(task: Task):
+            # Blocker count (descending - negate for sorting)
+            blocker_count = blocker_counts.get(task.task_id, 0)
+            
+            # Priority (descending - negate for sorting)
+            priority = task.priority
+            
+            # Creation time (ascending - older first)
+            # Handle missing created_at gracefully
+            created_at = task.created_at or "9999-99-99"
+            
+            return (-blocker_count, -priority, created_at)
+        
+        sorted_tasks = sorted(tasks, key=sort_key)
+        
+        # Log if we have blocker tasks
+        blocker_tasks = [t for t in sorted_tasks if blocker_counts.get(t.task_id, 0) > 0]
+        if blocker_tasks:
+            total_blocked = sum(blocker_counts.values())
+            self.logger.info(
+                f"Prioritizing {len(blocker_tasks)} blocker task(s) "
+                f"(blocking {total_blocked} tasks)"
+            )
+            # Log top 5 blocker tasks for visibility
+            for task in blocker_tasks[:5]:
+                count = blocker_counts[task.task_id]
+                self.logger.debug(
+                    f"  Task {task.task_id} blocks {count} task(s) "
+                    f"(priority={task.priority})"
+                )
+        
+        return sorted_tasks
+    
     def _process_unassigned_tasks(self, stats: Dict[str, int]) -> None:
         """
         Process unassigned tasks by queue, matching them to available agents.
@@ -279,11 +430,33 @@ class Scheduler:
             self.logger.info(f"Querying up to {total_slots} unassigned tasks from queue '{queue_name}'...")
             
             try:
-                tasks = self.tinytask_client.get_unassigned_in_queue(queue_name, total_slots)
-                self.logger.info(f"Found {len(tasks)} unassigned tasks in queue '{queue_name}'")
+                all_tasks = self.tinytask_client.get_unassigned_in_queue(queue_name, total_slots)
+                self.logger.info(f"Found {len(all_tasks)} unassigned tasks in queue '{queue_name}'")
             except Exception as e:
                 self.logger.error(f"Failed to query unassigned tasks for queue '{queue_name}': {e}")
                 stats['errors'] += 1
+                continue
+            
+            # Handle blocking-aware or legacy behavior
+            if self.config.disable_blocking:
+                # Complete rollback: use original tinytask order, no filtering/sorting
+                self.logger.debug("Blocking disabled - using original task order")
+                tasks = all_tasks
+                blocked_count = 0
+                blocker_counts = {}
+            else:
+                # Count blocking relationships from ALL tasks (before filtering)
+                blocker_counts = self._count_blocking_relationships(all_tasks)
+                
+                # Filter blocked tasks
+                tasks, blocked_count = self._filter_blocked_tasks(all_tasks)
+                stats['tasks_blocked'] = stats.get('tasks_blocked', 0) + blocked_count
+                
+                # Sort for optimal spawning order (using blocker counts from all tasks)
+                tasks = self._sort_tasks_for_spawning(tasks, blocker_counts)
+            
+            if not tasks:
+                self.logger.debug(f"No unassigned tasks available in queue '{queue_name}'")
                 continue
             
             # Assign tasks to agents with most available capacity
@@ -359,6 +532,10 @@ class Scheduler:
                 stats['errors'] += 1
                 continue
             
+            # Filter blocked tasks
+            idle_tasks, blocked_count = self._filter_blocked_tasks(idle_tasks)
+            stats['tasks_blocked'] = stats.get('tasks_blocked', 0) + blocked_count
+            
             # Spawn wrappers up to available slots
             for task in idle_tasks[:available]:
                 recipe = task.recipe or f"{agent_name}.yaml"
@@ -402,6 +579,7 @@ class Scheduler:
             'tasks_spawned': 0,
             'unassigned_matched': 0,
             'assigned_spawned': 0,
+            'tasks_blocked': 0,
             'errors': 0
         }
         
@@ -471,8 +649,26 @@ class Scheduler:
                 
                 # Query idle tasks for this agent
                 try:
-                    idle_tasks = self.tinytask_client.list_idle_tasks(agent, limit=available)
-                    self.logger.info(f"Found {len(idle_tasks)} idle tasks for agent '{agent}'")
+                    all_idle_tasks = self.tinytask_client.list_idle_tasks(agent, limit=available)
+                    self.logger.info(f"Found {len(all_idle_tasks)} idle tasks for agent '{agent}'")
+                    
+                    # Handle blocking-aware or legacy behavior
+                    if self.config.disable_blocking:
+                        # Complete rollback: use original tinytask order, no filtering/sorting
+                        self.logger.debug("Blocking disabled - using original task order")
+                        idle_tasks = all_idle_tasks
+                        blocked_count = 0
+                    else:
+                        # Count blocking relationships from ALL tasks (before filtering)
+                        blocker_counts = self._count_blocking_relationships(all_idle_tasks)
+                        
+                        # Filter blocked tasks
+                        idle_tasks, blocked_count = self._filter_blocked_tasks(all_idle_tasks)
+                        stats['tasks_blocked'] = stats.get('tasks_blocked', 0) + blocked_count
+                        
+                        # Sort tasks (even in legacy mode, optimize within agent)
+                        if idle_tasks:
+                            idle_tasks = self._sort_tasks_for_spawning(idle_tasks, blocker_counts)
                     
                     for task in idle_tasks[:available]:
                         # Determine recipe
@@ -506,6 +702,7 @@ class Scheduler:
         self.logger.info(f"Unassigned tasks matched: {stats['unassigned_matched']}")
         self.logger.info(f"Already-assigned tasks spawned: {stats['assigned_spawned']}")
         self.logger.info(f"Total tasks spawned: {stats['tasks_spawned']}")
+        self.logger.info(f"Blocked tasks skipped: {stats.get('tasks_blocked', 0)}")
         self.logger.info(f"Errors: {stats['errors']}")
         self.logger.info("=" * 60)
         

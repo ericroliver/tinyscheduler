@@ -64,6 +64,7 @@ Environment Variables:
   TINYSCHEDULER_MAX_RUNTIME_SEC    Max task runtime (default: 3600)
   TINYSCHEDULER_LOG_LEVEL          Log level (default: INFO)
   TINYSCHEDULER_DRY_RUN            Dry run mode (default: false)
+  TINYSCHEDULER_DISABLE_BLOCKING   Disable task blocking (default: false)
   TINYSCHEDULER_ENABLED            Enable scheduler (default: false)
         """
     )
@@ -198,6 +199,11 @@ Environment Variables:
         '--dry-run',
         action='store_true',
         help='Show planned actions without making changes'
+    )
+    run_parser.add_argument(
+        '--disable-blocking',
+        action='store_true',
+        help='Disable task blocking feature (rollback to legacy behavior)'
     )
     
     return parser

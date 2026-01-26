@@ -648,5 +648,205 @@ class TestErrorHandling:
             assert scheduler.agent_registry is None
 
 
+class TestTaskBlockingIntegration:
+    """Integration tests for task blocking functionality."""
+    
+    def test_queue_mode_filters_blocked_tasks(self, scheduler):
+        """Queue mode skips blocked tasks."""
+        # Setup
+        stats = {'unassigned_matched': 0, 'tasks_spawned': 0, 'tasks_blocked': 0, 'errors': 0}
+        
+        scheduler.lease_store.count_active_by_agent = Mock(return_value={})
+        
+        # Mock queue with blocked and unblocked tasks
+        dev_tasks = [
+            Task(task_id="1", agent="", status="idle", is_currently_blocked=False),
+            Task(task_id="2", agent="", status="idle", is_currently_blocked=True, blocked_by_task_id=1),
+            Task(task_id="3", agent="", status="idle", is_currently_blocked=False),
+        ]
+        
+        scheduler.tinytask_client.get_unassigned_in_queue = Mock(side_effect=lambda q, l: {
+            "dev": dev_tasks,
+            "qa": []
+        }.get(q, []))
+        
+        scheduler.tinytask_client.assign_task = Mock(return_value=True)
+        scheduler._spawn_wrapper = Mock(return_value=True)
+        
+        # Execute
+        scheduler._process_unassigned_tasks(stats)
+        
+        # Verify only unblocked tasks spawned
+        assert stats['tasks_spawned'] == 2
+        assert stats['tasks_blocked'] == 1
+        assert scheduler.tinytask_client.assign_task.call_count == 2
+    
+    def test_queue_mode_prioritizes_blocker_tasks(self, scheduler):
+        """Queue mode spawns blocker tasks first."""
+        # Setup
+        stats = {'unassigned_matched': 0, 'tasks_spawned': 0, 'tasks_blocked': 0, 'errors': 0}
+        
+        # Only 1 slot available for dev queue
+        scheduler.lease_store.count_active_by_agent = Mock(return_value={
+            "vaela": 1,  # 1 of 2 used
+            "remy": 2    # all used
+        })
+        
+        # Task 1 blocks Task 2, but Task 3 has higher priority
+        dev_tasks = [
+            Task(task_id="1", agent="", status="idle", priority=0, is_currently_blocked=False),
+            Task(task_id="2", agent="", status="idle", priority=10,
+                 blocked_by_task_id=1, is_currently_blocked=True),
+            Task(task_id="3", agent="", status="idle", priority=5, is_currently_blocked=False),
+        ]
+        
+        scheduler.tinytask_client.get_unassigned_in_queue = Mock(side_effect=lambda q, l: {
+            "dev": dev_tasks,
+            "qa": []
+        }.get(q, []))
+        
+        assigned_task_ids = []
+        def track_assignment(task_id, agent):
+            assigned_task_ids.append(task_id)
+            return True
+        
+        scheduler.tinytask_client.assign_task = Mock(side_effect=track_assignment)
+        scheduler._spawn_wrapper = Mock(return_value=True)
+        
+        # Execute
+        scheduler._process_unassigned_tasks(stats)
+        
+        # Verify blocker task spawned first (task 1, not higher priority task 3)
+        assert stats['tasks_spawned'] == 1
+        assert assigned_task_ids[0] == "1"  # Blocker spawned
+        assert stats['tasks_blocked'] == 1  # Task 2 filtered out
+    
+    def test_assigned_tasks_filters_blocked(self, scheduler):
+        """Already-assigned tasks also filter blocked tasks."""
+        stats = {'assigned_spawned': 0, 'tasks_spawned': 0, 'tasks_blocked': 0, 'errors': 0}
+        
+        scheduler.lease_store.count_active_by_agent = Mock(return_value={})
+        
+        # Mock idle tasks with one blocked
+        def mock_list_idle(agent, limit):
+            if agent == "vaela":
+                return [
+                    Task(task_id="1", agent="vaela", status="idle", is_currently_blocked=False),
+                    Task(task_id="2", agent="vaela", status="idle",
+                         is_currently_blocked=True, blocked_by_task_id=1),
+                ]
+            return []
+        
+        scheduler.tinytask_client.list_idle_tasks = Mock(side_effect=mock_list_idle)
+        scheduler._spawn_wrapper = Mock(return_value=True)
+        
+        # Execute
+        scheduler._process_assigned_tasks(stats)
+        
+        # Verify only unblocked task spawned
+        assert scheduler._spawn_wrapper.call_count == 1
+        assert stats['tasks_blocked'] == 1
+    
+    def test_legacy_mode_filters_and_sorts_blocked_tasks(self, scheduler):
+        """Legacy mode filters blocked tasks and sorts remaining."""
+        # Disable agent registry to use legacy mode
+        scheduler.agent_registry = None
+        
+        # Setup
+        scheduler.lease_store.list_all = Mock(return_value=[])
+        scheduler.lease_store.find_stale_leases = Mock(return_value=[])
+        scheduler.lease_store.count_active_by_agent = Mock(return_value={
+            "vaela": 1  # 1 of 2 used
+        })
+        
+        # Mock idle tasks for vaela (1 slot available)
+        idle_tasks = [
+            Task(task_id="1", agent="vaela", status="idle", priority=0, is_currently_blocked=False),
+            Task(task_id="2", agent="vaela", status="idle", priority=10,
+                 is_currently_blocked=True, blocked_by_task_id=1),
+            Task(task_id="3", agent="vaela", status="idle", priority=5, is_currently_blocked=False),
+        ]
+        
+        def mock_list_idle(agent, limit):
+            if agent == "vaela":
+                return idle_tasks
+            return []
+        
+        scheduler.tinytask_client.list_idle_tasks = Mock(side_effect=mock_list_idle)
+        
+        spawned_task_ids = []
+        def track_spawn(task_id, agent, recipe):
+            spawned_task_ids.append(task_id)
+            return True
+        
+        scheduler._spawn_wrapper = Mock(side_effect=track_spawn)
+        
+        # Execute
+        stats = scheduler.reconcile()
+        
+        # Should filter blocked task and spawn blocker first
+        assert stats['tasks_spawned'] == 1
+        assert spawned_task_ids[0] == "1"  # Blocker task (despite lower priority)
+        assert stats['tasks_blocked'] == 1
+    
+    def test_backward_compat_no_blocking_fields(self, scheduler):
+        """Works with TinyTask without blocking fields."""
+        # Setup
+        stats = {'unassigned_matched': 0, 'tasks_spawned': 0, 'tasks_blocked': 0, 'errors': 0}
+        
+        scheduler.lease_store.count_active_by_agent = Mock(return_value={})
+        
+        # Old TinyTask response without blocking fields
+        dev_tasks = [
+            Task(task_id="1", agent="", status="idle"),
+            Task(task_id="2", agent="", status="idle"),
+        ]
+        
+        scheduler.tinytask_client.get_unassigned_in_queue = Mock(side_effect=lambda q, l: {
+            "dev": dev_tasks,
+            "qa": []
+        }.get(q, []))
+        
+        scheduler.tinytask_client.assign_task = Mock(return_value=True)
+        scheduler._spawn_wrapper = Mock(return_value=True)
+        
+        # Execute
+        scheduler._process_unassigned_tasks(stats)
+        
+        # Verify normal behavior (all tasks spawned, no blocked)
+        assert stats['tasks_spawned'] == 2
+        assert stats['tasks_blocked'] == 0
+    
+    def test_blocking_disabled_via_config(self, scheduler):
+        """Blocking can be disabled via config."""
+        # Enable disable_blocking flag
+        scheduler.config.disable_blocking = True
+        
+        stats = {'unassigned_matched': 0, 'tasks_spawned': 0, 'tasks_blocked': 0, 'errors': 0}
+        
+        scheduler.lease_store.count_active_by_agent = Mock(return_value={})
+        
+        # Tasks with blocking relationships
+        dev_tasks = [
+            Task(task_id="1", agent="", status="idle", is_currently_blocked=False),
+            Task(task_id="2", agent="", status="idle", is_currently_blocked=True, blocked_by_task_id=1),
+        ]
+        
+        scheduler.tinytask_client.get_unassigned_in_queue = Mock(side_effect=lambda q, l: {
+            "dev": dev_tasks,
+            "qa": []
+        }.get(q, []))
+        
+        scheduler.tinytask_client.assign_task = Mock(return_value=True)
+        scheduler._spawn_wrapper = Mock(return_value=True)
+        
+        # Execute
+        scheduler._process_unassigned_tasks(stats)
+        
+        # All tasks should spawn (blocking disabled)
+        assert stats['tasks_spawned'] == 2
+        assert stats['tasks_blocked'] == 0
+
+
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])
