@@ -487,6 +487,79 @@ grep ERROR state/logs/scheduler_$(date +%Y%m%d).log | \
 - Review spawn failures (goose issues)
 - Check file system permissions
 
+### Blocked Task Issues
+
+#### Issue: Tasks Not Spawning Despite Available Capacity
+
+**Symptoms**:
+- Tasks visible in tinytask queue
+- Agents have available slots
+- No tasks spawning
+- "Blocked tasks skipped" in logs
+
+**Diagnosis**:
+```bash
+# Check if blocking is filtering tasks
+./tinyscheduler run --once | grep "Filtered out"
+
+# View blocked task count
+./tinyscheduler run --once | grep "Blocked tasks skipped"
+
+# Check task blocking status in tinytask
+curl -s http://localhost:3000/api/tasks | jq '.[] | {id, is_currently_blocked, blocked_by_task_id}'
+```
+
+**Solutions**:
+- Complete or unblock the blocking tasks
+- Verify TinyTask blocking relationships are correct
+- Check if blocker tasks are stuck or failed
+- Temporarily disable blocking if needed: `TINYSCHEDULER_DISABLE_BLOCKING=1`
+
+#### Issue: Wrong Tasks Being Prioritized
+
+**Symptoms**:
+- Lower priority tasks spawned before high priority
+- Tasks spawn in unexpected order
+
+**Diagnosis**:
+```bash
+# Check if blocker prioritization is active
+grep "Prioritizing.*blocker task" state/logs/scheduler_$(date +%Y%m%d).log
+
+# View task sorting details
+grep "blocks.*task(s)" state/logs/scheduler_$(date +%Y%m%d).log
+```
+
+**Explanation**:
+- Blocker tasks are intentionally prioritized over high-priority tasks
+- This maximizes throughput by unblocking dependencies faster
+- Within blocker tasks, priority is still respected
+
+**Solution**:
+- This is expected behavior for blocking-aware scheduling
+- To disable, use `TINYSCHEDULER_DISABLE_BLOCKING=1`
+
+#### Issue: Blocked Tasks Accumulating
+
+**Symptoms**:
+- Many tasks in blocked state
+- Blocked count increasing over time
+
+**Diagnosis**:
+```bash
+# Check blocker task status
+grep "Task.*blocks.*task(s)" state/logs/scheduler_$(date +%Y%m%d).log
+
+# Monitor blocked task count over time
+watch -n 30 './tinyscheduler run --once --dry-run | grep "Blocked tasks skipped"'
+```
+
+**Solutions**:
+- Investigate why blocker tasks aren't completing
+- Check for blocking chains (A blocks B blocks C)
+- Review tinytask task dependencies
+- Consider breaking up task dependencies
+
 ## Performance Tuning
 
 ### Optimization Guidelines

@@ -16,7 +16,16 @@ except ImportError:
 
 @dataclass
 class Task:
-    """Represents a tinytask task."""
+    """
+    Represents a tinytask task.
+    
+    Supports task blocking relationships from TinyTask:
+    - priority: Task priority for sorting (higher values first)
+    - blocked_by_task_id: ID of task that blocks this task
+    - is_currently_blocked: Computed by TinyTask based on blocker status
+    
+    Backward compatible with TinyTask instances without blocking feature.
+    """
     
     task_id: str
     agent: str
@@ -24,6 +33,9 @@ class Task:
     recipe: Optional[str] = None
     created_at: Optional[str] = None
     metadata: Dict[str, Any] = None
+    priority: int = 0
+    blocked_by_task_id: Optional[int] = None
+    is_currently_blocked: bool = False
     
     def __post_init__(self):
         if self.metadata is None:
@@ -33,6 +45,8 @@ class Task:
     def from_dict(cls, data: Dict) -> "Task":
         """
         Create Task from dictionary.
+        
+        Backward compatible - handles missing blocking fields gracefully.
         
         Args:
             data: Dictionary representation
@@ -47,6 +61,9 @@ class Task:
             recipe=data.get('recipe'),
             created_at=data.get('created_at'),
             metadata=data.get('metadata', {}),
+            priority=data.get('priority', 0),
+            blocked_by_task_id=data.get('blocked_by_task_id'),
+            is_currently_blocked=data.get('is_currently_blocked', False),
         )
 
 
