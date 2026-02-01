@@ -1,0 +1,19 @@
+services:
+  tinyscheduler:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: tinyscheduler
+    volumes:
+      - ./data:/data
+      - ./config:/config
+      - ./.env:/app/.env:ro
+    environment:
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+    networks:
+      - scheduler-network
+
+networks:
+  scheduler-network:
+    driver: bridge
